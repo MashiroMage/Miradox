@@ -1,0 +1,51 @@
+name: Sync Jadyx main
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions: {}
+
+concurrency:
+  group: sync-jadyx-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Sync upstream branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::Please add the UPSTREAM_SYNC_TOKEN repository secret."
+            exit 1
+          fi
+
+          gh auth setup-git --hostname github.com
+
+          git init --bare sync.git
+          cd sync.git
+
+          git remote add jadyx https://github.com/JulianDr14/jadyx.git
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+
+          upstream_sha="$(git ls-remote --exit-code jadyx refs/heads/main | cut -f1)"
+          mirror_sha="$(git ls-remote origin refs/heads/upstream/jadyx-main | cut -f1)"
+
+          if [[ "$upstream_sha" == "$mirror_sha" ]]; then
+            echo "Already up to date: $upstream_sha"
+            exit 0
+          fi
+
+          git fetch --no-tags jadyx refs/heads/main:refs/remotes/jadyx/main
+          git push origin refs/remotes/jadyx/main:refs/heads/upstream/jadyx-main
+
+          echo "Synced upstream/jadyx-main successfully."
